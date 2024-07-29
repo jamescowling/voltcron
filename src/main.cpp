@@ -20,10 +20,6 @@ const uint16_t SECOND_BTN_PIN = 4;
 RTC_DS3231 rtc;
 Adafruit_MCP4728 dac;
 
-// The Adafruit Trinket M0 comes with a built-in RGB so we'll use it.
-Adafruit_DotStar strip(DOTSTAR_NUM, PIN_DOTSTAR_DATA, PIN_DOTSTAR_CLK,
-                       DOTSTAR_BRG);
-
 Button hour_btn(HOUR_BTN_PIN);
 Button minute_btn(MINUTE_BTN_PIN);
 Button second_btn(SECOND_BTN_PIN);
@@ -32,7 +28,6 @@ void adjustTime();
 void synchronizeClocks();
 float floatSeconds();
 void updateDAC(const DateTime& now);
-void updateLED(const DateTime& now);
 void log(const DateTime& now);
 void animate();
 
@@ -44,7 +39,6 @@ const unsigned long syncInterval = 60000;
 
 void setup() {
   Serial.begin(57600);
-  strip.begin();
   if (!rtc.begin()) {
     while (!Serial);
     Serial.println("Couldn't find DS3231 RTC");
@@ -65,16 +59,15 @@ void setup() {
 
 void loop() {
   adjustTime();
-  if (millis() - lastSyncMillis >= syncInterval) {
-    synchronizeClocks();
-  }
   DateTime now = rtc.now();
   updateDAC(now);
-  updateLED(now);
   log(now);
 }
 
 void adjustTime() {
+  if (millis() - lastSyncMillis >= syncInterval) {
+    synchronizeClocks();
+  }
   if (hour_btn.IsPressed()) {
     Serial.println("hour++");
     DateTime now = rtc.now();
@@ -130,19 +123,6 @@ void updateDAC(const DateTime& now) {
   dac.setChannelValue(MCP4728_CHANNEL_C, sv, MCP4728_VREF_INTERNAL,
                       MCP4728_GAIN_2X);
   delay(1);
-}
-
-void updateLED(const DateTime& now) {
-  int h = now.hour() % 12;
-  int m = now.minute();
-  int s = now.second();
-
-  int hc = map(h, 0, 11, 0, 255);
-  int mc = map(m, 0, 60, 0, 255);
-  int sc = map(s, 0, 60, 0, 255);
-
-  strip.setPixelColor(0, hc, mc, sc);
-  strip.show();
 }
 
 unsigned long last_log = 0;
