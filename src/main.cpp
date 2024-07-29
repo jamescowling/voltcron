@@ -118,12 +118,18 @@ void updateDAC(const DateTime& now) {
   int mv = map(m * 60 + (int)s, 0, 3600, 0, VOLTMETER_MAX);
   int sv = map((int)(s * 1000), 0, 60 * 1000, 0, VOLTMETER_MAX);
 
+  // Not sure if the delays are required but there seems to be some kind of
+  // noise or inconsistency in output from the DAC so adding them just in case
+  // it helps stability.
   dac.setChannelValue(MCP4728_CHANNEL_A, hv, MCP4728_VREF_INTERNAL,
                       MCP4728_GAIN_2X);
+  delay(1);
   dac.setChannelValue(MCP4728_CHANNEL_B, mv, MCP4728_VREF_INTERNAL,
                       MCP4728_GAIN_2X);
+  delay(1);
   dac.setChannelValue(MCP4728_CHANNEL_C, sv, MCP4728_VREF_INTERNAL,
                       MCP4728_GAIN_2X);
+  delay(1);
 }
 
 void updateLED(const DateTime& now) {
