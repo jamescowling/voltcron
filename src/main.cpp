@@ -8,48 +8,36 @@
 
 #include "button.h"
 
-// Max range on the voltmeter dials, in mV.
-// The MCP4728 DAC can output at most 4.096V.
-// 3V dials are a good fit and available for cheap.
-const uint16_t VOLTMETER_MAX = 3000;
-
-const uint16_t HOUR_BTN_PIN = 1;
-const uint16_t MINUTE_BTN_PIN = 3;
-const uint16_t SECOND_BTN_PIN = 4;
+const uint16_t VOLTMETER_MAX = 3000;  // Max voltage for the voltmeter (mV)
+const uint16_t HOUR_BTN_PIN = 1, MINUTE_BTN_PIN = 3, SECOND_BTN_PIN = 4;
+const unsigned long SYNC_INTERVAL = 60000;
+const unsigned long LOG_INTERVAL = 100;
 
 RTC_DS3231 rtc;
 Adafruit_MCP4728 dac;
+Button hourBtn(HOUR_BTN_PIN), minuteBtn(MINUTE_BTN_PIN),
+    secondBtn(SECOND_BTN_PIN);
 
-Button hour_btn(HOUR_BTN_PIN);
-Button minute_btn(MINUTE_BTN_PIN);
-Button second_btn(SECOND_BTN_PIN);
+// Time sync between RTC and microcontroller.
+unsigned long lastSyncMillis = 0, lastRTCSeconds = 0, lastLogMillis = 0;
 
 void adjustTime();
 void synchronizeClocks();
 float floatSeconds();
 void updateDAC(const DateTime& now);
-void log(const DateTime& now);
+void logTime(const DateTime& now);
 void animate();
-
-// The RTC doesn't return ms so we periodically synchronize the clocks so we can
-// use the system ms offset.
-unsigned long lastSyncMillis = 0;
-unsigned long lastRTCSeconds = 0;
-const unsigned long syncInterval = 60000;
 
 void setup() {
   Serial.begin(57600);
   if (!rtc.begin()) {
-    while (!Serial);
     Serial.println("Couldn't find DS3231 RTC");
     while (1);
   }
   if (rtc.lostPower()) {
-    Serial.println("RTC lost power, setting time to build date");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
   if (!dac.begin()) {
-    while (!Serial);
     Serial.println("Couldn't find MCP4728 DAC");
     while (1);
   }
@@ -59,47 +47,37 @@ void setup() {
 
 void loop() {
   adjustTime();
+  if (millis() - lastSyncMillis >= SYNC_INTERVAL) synchronizeClocks();
   DateTime now = rtc.now();
   updateDAC(now);
-  log(now);
+  if (millis() - lastLogMillis >= LOG_INTERVAL) {
+    lastLogMillis = millis();
+    logTime(now);
+  }
 }
 
 void adjustTime() {
-  if (millis() - lastSyncMillis >= syncInterval) {
-    synchronizeClocks();
-  }
-  if (hour_btn.IsPressed()) {
-    Serial.println("hour++");
-    DateTime now = rtc.now();
+  DateTime now = rtc.now();
+  if (hourBtn.IsPressed())
     rtc.adjust(DateTime(now.year(), now.month(), now.day(),
                         (now.hour() + 1) % 24, now.minute(), now.second()));
-  }
-  if (minute_btn.IsPressed()) {
-    Serial.println("minute++");
-    DateTime now = rtc.now();
+  if (minuteBtn.IsPressed())
     rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
                         (now.minute() + 1) % 60, now.second()));
-  }
-  if (second_btn.IsPressed()) {
-    Serial.println("second=0");
-    DateTime now = rtc.now();
+  if (secondBtn.IsPressed())
     rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
                         now.minute(), 0));
-  }
 }
 
 void synchronizeClocks() {
-  DateTime now = rtc.now();
-  lastRTCSeconds = now.unixtime();
+  lastRTCSeconds = rtc.now().unixtime();
   lastSyncMillis = millis();
 }
 
 float floatSeconds() {
-  unsigned long currentMillis = millis();
-  unsigned long elapsedMillis = currentMillis - lastSyncMillis;
+  unsigned long elapsedMillis = millis() - lastSyncMillis;
   unsigned long currentSeconds = lastRTCSeconds + elapsedMillis / 1000;
-  float fractionalSeconds = (elapsedMillis % 1000) / 1000.0;
-  return currentSeconds % 60 + fractionalSeconds;
+  return (currentSeconds % 60) + (elapsedMillis % 1000) / 1000.0;
 }
 
 void updateDAC(const DateTime& now) {
@@ -125,44 +103,24 @@ void updateDAC(const DateTime& now) {
   delay(1);
 }
 
-unsigned long last_log = 0;
-void log(const DateTime& now) {
-  unsigned long ms = millis();
-  if (ms - last_log < 100) {
-    return;
-  }
-  last_log = ms;
+void logTime(const DateTime& now) {
   Serial.printf("%02d:%02d:%05.2f\n", now.hour() % 12, now.minute(),
                 floatSeconds());
 }
 
-// Silly startup animation on the dials.
 void animate() {
-  // 3 seconds up.
-  for (int i = 0; i < 300; i++) {
-    Serial.println("animate");
-    delay(10);
+  for (int value = 0; value <= VOLTMETER_MAX; value++) {
+    for (int channel = 0; channel < 3; ++channel) {
+      dac.setChannelValue((MCP4728_channel_t)channel, value,
+                          MCP4728_VREF_INTERNAL, MCP4728_GAIN_2X);
+      delay(1);
+    }
   }
-
-  // Ramp up to VOLTMETER_MAX
-  for (int value = 0; value <= VOLTMETER_MAX; value += 50) {
-    dac.setChannelValue(MCP4728_CHANNEL_A, value, MCP4728_VREF_INTERNAL,
-                        MCP4728_GAIN_2X);
-    dac.setChannelValue(MCP4728_CHANNEL_B, value, MCP4728_VREF_INTERNAL,
-                        MCP4728_GAIN_2X);
-    dac.setChannelValue(MCP4728_CHANNEL_C, value, MCP4728_VREF_INTERNAL,
-                        MCP4728_GAIN_2X);
-    delay(10);  // Small delay for smooth transition
-  }
-
-  // Ramp down to 0
-  for (int value = VOLTMETER_MAX; value >= 0; value -= 50) {
-    dac.setChannelValue(MCP4728_CHANNEL_A, value, MCP4728_VREF_INTERNAL,
-                        MCP4728_GAIN_2X);
-    dac.setChannelValue(MCP4728_CHANNEL_B, value, MCP4728_VREF_INTERNAL,
-                        MCP4728_GAIN_2X);
-    dac.setChannelValue(MCP4728_CHANNEL_C, value, MCP4728_VREF_INTERNAL,
-                        MCP4728_GAIN_2X);
-    delay(10);  // Small delay for smooth transition
+  for (int value = VOLTMETER_MAX; value >= 0; value--) {
+    for (int channel = 0; channel < 3; ++channel) {
+      dac.setChannelValue((MCP4728_channel_t)channel, value,
+                          MCP4728_VREF_INTERNAL, MCP4728_GAIN_2X);
+      delay(1);
+    }
   }
 }
