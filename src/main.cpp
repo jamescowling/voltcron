@@ -8,6 +8,19 @@
 
 #include "button.h"
 
+// Pin assignment:
+//
+//  0/SDA: I2C bus
+// 1/Aout: Hour button
+//  2/SCL: I2C bus
+//   3/RX: Minute button
+//   4/TX: Second button
+//    USB: unused
+//    Bat: unused
+//     3V: regulated 3.3V to other boards
+//    Gnd: common ground
+//    Rst: unused
+
 const uint16_t VOLTMETER_MAX = 3000;  // Max voltage for the voltmeter (mV)
 const uint16_t HOUR_BTN_PIN = 1, MINUTE_BTN_PIN = 3, SECOND_BTN_PIN = 4;
 const unsigned long SYNC_INTERVAL = 60000;
