@@ -5,7 +5,6 @@
 // resets seconds to zero. Holding second button keeps dials at max range to aid
 // in adjustment.
 
-#include <Adafruit_DotStar.h>
 #include <Adafruit_MCP4728.h>
 #include <Arduino.h>
 #include <RTClib.h>
@@ -38,6 +37,9 @@ Button hourBtn(HOUR_BTN_PIN), minuteBtn(MINUTE_BTN_PIN),
 // Time sync between RTC and microcontroller.
 unsigned long lastSyncMillis = 0, lastRTCSeconds = 0, lastLogMillis = 0;
 
+const MCP4728_vref_t DAC_VREF = MCP4728_VREF_INTERNAL;
+const MCP4728_gain_t DAC_GAIN = MCP4728_GAIN_2X;
+
 void adjustTime();
 void synchronizeClocks();
 float floatSeconds();
@@ -47,6 +49,8 @@ void animate();
 
 void setup() {
   Serial.begin(57600);
+
+  // Initialize RTC.
   if (!rtc.begin()) {
     Serial.println("Couldn't find DS3231 RTC");
     while (1);
@@ -54,37 +58,27 @@ void setup() {
   if (rtc.lostPower()) {
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
+
+  // Initialize DAC.
   if (!dac.begin()) {
     Serial.println("Couldn't find MCP4728 DAC");
     while (1);
   }
+
   synchronizeClocks();
   animate();
 }
 
-void synchronizeClocks() {
-  lastRTCSeconds = rtc.now().unixtime();
-  lastSyncMillis = millis();
-}
-
-void animate() {
-  for (int channel = 0; channel < 3; ++channel) {
-    dac.setChannelValue((MCP4728_channel_t)channel, VOLTMETER_MAX,
-                        MCP4728_VREF_INTERNAL, MCP4728_GAIN_2X);
-    delay(1000);
-  }
-  for (int channel = 0; channel < 3; ++channel) {
-    dac.setChannelValue((MCP4728_channel_t)channel, 0, MCP4728_VREF_INTERNAL,
-                        MCP4728_GAIN_2X);
-    delay(1000);
-  }
-}
-
 void loop() {
   adjustTime();
-  if (millis() - lastSyncMillis >= SYNC_INTERVAL) synchronizeClocks();
+
+  if (millis() - lastSyncMillis >= SYNC_INTERVAL) {
+    synchronizeClocks();
+  }
+
   DateTime now = rtc.now();
   updateDAC(now);
+
   if (millis() - lastLogMillis >= LOG_INTERVAL) {
     lastLogMillis = millis();
     logTime(now);
@@ -93,15 +87,40 @@ void loop() {
 
 void adjustTime() {
   DateTime now = rtc.now();
-  if (hourBtn.IsPressed())
-    rtc.adjust(DateTime(now.year(), now.month(), now.day(),
-                        (now.hour() + 1) % 24, now.minute(), now.second()));
-  if (minuteBtn.IsPressed())
-    rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
-                        (now.minute() + 1) % 60, now.second()));
-  if (secondBtn.IsPressed())
+
+  // Increment hour if the hour button is pressed.
+  if (hourBtn.IsPressed()) {
+    rtc.adjust(now + TimeSpan(3600));  // Add one hour
+  }
+
+  // Increment minute if the minute button is pressed.
+  if (minuteBtn.IsPressed()) {
+    rtc.adjust(now + TimeSpan(60));  // Add one minute
+  }
+
+  // Reset seconds to zero if the second button is pressed.
+  if (secondBtn.IsPressed()) {
     rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
                         now.minute(), 0));
+  }
+}
+
+void synchronizeClocks() {
+  lastRTCSeconds = rtc.now().unixtime();
+  lastSyncMillis = millis();
+}
+
+void animate() {
+  // Animate DAC channels to max and min values for adjustment.
+  for (int channel = 0; channel < 3; ++channel) {
+    dac.setChannelValue((MCP4728_channel_t)channel, VOLTMETER_MAX, DAC_VREF,
+                        DAC_GAIN);
+    delay(1000);
+  }
+  for (int channel = 0; channel < 3; ++channel) {
+    dac.setChannelValue((MCP4728_channel_t)channel, 0, DAC_VREF, DAC_GAIN);
+    delay(1000);
+  }
 }
 
 float floatSeconds() {
@@ -111,9 +130,9 @@ float floatSeconds() {
 }
 
 void updateDAC(const DateTime& now) {
-  int hv, mv, sv;
+  uint16_t hv, mv, sv;
 
-  // Max output while button is held so we can use it to adjust dial range.
+  // Max output while button is held, to adjust dial range.
   if (secondBtn.IsPressed()) {
     hv = mv = sv = VOLTMETER_MAX;
   } else {
@@ -121,23 +140,17 @@ void updateDAC(const DateTime& now) {
     int m = now.minute();
     float s = floatSeconds();
 
-    hv = map(h * 3600 + m * 60 + (int)s, 0, 12 * 3600, 0, VOLTMETER_MAX);
-    mv = map(m * 60 + (int)s, 0, 3600, 0, VOLTMETER_MAX);
-    sv = map((int)(s * 1000), 0, 60 * 1000, 0, VOLTMETER_MAX);
+    // Calculate voltages for hour, minute, and second hands.
+    float h_seconds = h * 3600 + m * 60 + s;
+    hv = (uint16_t)((h_seconds / (12 * 3600)) * VOLTMETER_MAX);
+    float m_seconds = m * 60 + s;
+    mv = (uint16_t)((m_seconds / 3600) * VOLTMETER_MAX);
+    sv = (uint16_t)((s / 60) * VOLTMETER_MAX);
   }
 
-  // Not sure if the delays are required but there seems to be some kind of
-  // noise or inconsistency in output from the DAC so adding them just in case
-  // it helps stability.
-  dac.setChannelValue(MCP4728_CHANNEL_A, hv, MCP4728_VREF_INTERNAL,
-                      MCP4728_GAIN_2X);
-  delay(1);
-  dac.setChannelValue(MCP4728_CHANNEL_B, mv, MCP4728_VREF_INTERNAL,
-                      MCP4728_GAIN_2X);
-  delay(1);
-  dac.setChannelValue(MCP4728_CHANNEL_C, sv, MCP4728_VREF_INTERNAL,
-                      MCP4728_GAIN_2X);
-  delay(1);
+  dac.setChannelValue(MCP4728_CHANNEL_A, hv, DAC_VREF, DAC_GAIN);
+  dac.setChannelValue(MCP4728_CHANNEL_B, mv, DAC_VREF, DAC_GAIN);
+  dac.setChannelValue(MCP4728_CHANNEL_C, sv, DAC_VREF, DAC_GAIN);
 }
 
 void logTime(const DateTime& now) {
