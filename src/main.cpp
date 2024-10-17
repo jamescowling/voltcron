@@ -62,6 +62,24 @@ void setup() {
   animate();
 }
 
+void synchronizeClocks() {
+  lastRTCSeconds = rtc.now().unixtime();
+  lastSyncMillis = millis();
+}
+
+void animate() {
+  for (int channel = 0; channel < 3; ++channel) {
+    dac.setChannelValue((MCP4728_channel_t)channel, VOLTMETER_MAX,
+                        MCP4728_VREF_INTERNAL, MCP4728_GAIN_2X);
+    delay(1000);
+  }
+  for (int channel = 0; channel < 3; ++channel) {
+    dac.setChannelValue((MCP4728_channel_t)channel, 0, MCP4728_VREF_INTERNAL,
+                        MCP4728_GAIN_2X);
+    delay(1000);
+  }
+}
+
 void loop() {
   adjustTime();
   if (millis() - lastSyncMillis >= SYNC_INTERVAL) synchronizeClocks();
@@ -84,11 +102,6 @@ void adjustTime() {
   if (secondBtn.IsPressed())
     rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
                         now.minute(), 0));
-}
-
-void synchronizeClocks() {
-  lastRTCSeconds = rtc.now().unixtime();
-  lastSyncMillis = millis();
 }
 
 float floatSeconds() {
@@ -130,21 +143,4 @@ void updateDAC(const DateTime& now) {
 void logTime(const DateTime& now) {
   Serial.printf("%02d:%02d:%05.2f\n", now.hour() % 12, now.minute(),
                 floatSeconds());
-}
-
-void animate() {
-  for (int value = 0; value <= VOLTMETER_MAX; value++) {
-    for (int channel = 0; channel < 3; ++channel) {
-      dac.setChannelValue((MCP4728_channel_t)channel, value,
-                          MCP4728_VREF_INTERNAL, MCP4728_GAIN_2X);
-      delay(1);
-    }
-  }
-  for (int value = VOLTMETER_MAX; value >= 0; value--) {
-    for (int channel = 0; channel < 3; ++channel) {
-      dac.setChannelValue((MCP4728_channel_t)channel, value,
-                          MCP4728_VREF_INTERNAL, MCP4728_GAIN_2X);
-      delay(1);
-    }
-  }
 }
