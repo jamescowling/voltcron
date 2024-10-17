@@ -1,5 +1,9 @@
 // Outputs the current time as three voltages that can be used to drive a
 // voltmeter clock.
+//
+// Hour button increments hour, minute button increments minute, second button
+// resets seconds to zero. Holding second button keeps dials at max range to aid
+// in adjustment.
 
 #include <Adafruit_DotStar.h>
 #include <Adafruit_MCP4728.h>
@@ -14,8 +18,8 @@
 // 1/Aout: Hour button
 //  2/SCL: I2C bus
 //   3/RX: Minute button
-//   4/TX: Second button
-//    USB: unused
+//   4/TX: Second reset / max range button
+//    USB: unregulated 5V to LEDs via 47ohm resistor
 //    Bat: unused
 //     3V: regulated 3.3V to other boards
 //    Gnd: common ground
@@ -94,13 +98,20 @@ float floatSeconds() {
 }
 
 void updateDAC(const DateTime& now) {
-  int h = now.hour() % 12;
-  int m = now.minute();
-  float s = floatSeconds();
+  int hv, mv, sv;
 
-  int hv = map(h * 3600 + m * 60 + (int)s, 0, 12 * 3600, 0, VOLTMETER_MAX);
-  int mv = map(m * 60 + (int)s, 0, 3600, 0, VOLTMETER_MAX);
-  int sv = map((int)(s * 1000), 0, 60 * 1000, 0, VOLTMETER_MAX);
+  // Max output while button is held so we can use it to adjust dial range.
+  if (secondBtn.IsPressed()) {
+    hv = mv = sv = VOLTMETER_MAX;
+  } else {
+    int h = now.hour() % 12;
+    int m = now.minute();
+    float s = floatSeconds();
+
+    hv = map(h * 3600 + m * 60 + (int)s, 0, 12 * 3600, 0, VOLTMETER_MAX);
+    mv = map(m * 60 + (int)s, 0, 3600, 0, VOLTMETER_MAX);
+    sv = map((int)(s * 1000), 0, 60 * 1000, 0, VOLTMETER_MAX);
+  }
 
   // Not sure if the delays are required but there seems to be some kind of
   // noise or inconsistency in output from the DAC so adding them just in case
