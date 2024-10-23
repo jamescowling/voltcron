@@ -9,7 +9,7 @@
 #include <Arduino.h>
 #include <RTClib.h>
 
-#include "button.h"
+#include "OneButton.h"
 
 // Pin assignment:
 //
@@ -31,9 +31,9 @@
 const uint16_t HOURS_BTN_PIN = 1;
 const uint16_t MINUTES_BTN_PIN = 3;
 const uint16_t SECONDS_BTN_PIN = 4;
-Button hourBtn(HOURS_BTN_PIN);
-Button minuteBtn(MINUTES_BTN_PIN);
-Button secondBtn(SECONDS_BTN_PIN);
+OneButton hoursBtn(HOURS_BTN_PIN);
+OneButton minutesBtn(MINUTES_BTN_PIN);
+OneButton secondsBtn(SECONDS_BTN_PIN);
 
 Adafruit_MCP4728 dac;
 const MCP4728_vref_t DAC_VREF = MCP4728_VREF_INTERNAL;
@@ -54,12 +54,15 @@ const uint16_t SECONDS_MAX_MV = 2800;
 RTC_DS3231 rtc;
 
 const unsigned long SYNC_INTERVAL = 60000;
-const unsigned long LOG_INTERVAL = 100;
+const unsigned long LOG_INTERVAL = 1000;
 
 // Time sync between RTC and microcontroller.
 unsigned long lastSyncMillis = 0, lastRTCSeconds = 0, lastLogMillis = 0;
 
-void adjustTime();
+void hoursClick();
+void minutesClick();
+void secondsClick();
+
 void synchronizeClock();
 float floatSeconds();
 void updateDAC();
@@ -68,53 +71,54 @@ void setup() {
   Serial.begin(57600);
 
   // Initialize RTC.
-  if (!rtc.begin()) {
-    while (true) {
-      Serial.println("Couldn't find RTC");
-      delay(1000);
-    }
+  while (!rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    delay(5000);
   }
   if (rtc.lostPower()) {
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
   // Initialize DAC.
-  if (!dac.begin()) {
-    while (true) {
-      Serial.println("Couldn't find MCP4728 DAC");
-      delay(1000);
-    }
+  while (!dac.begin()) {
+    Serial.println("Couldn't find MCP4728 DAC");
+    delay(5000);
   }
+
+  hoursBtn.attachClick(hoursClick);
+  minutesBtn.attachClick(minutesClick);
+  secondsBtn.attachClick(secondsClick);
 
   synchronizeClock();
 }
 
 void loop() {
-  adjustTime();
+  hoursBtn.tick();
+  minutesBtn.tick();
+  secondsBtn.tick();
+
   updateDAC();
+  delay(10);
 }
 
-void adjustTime() {
+void hoursClick() {
+  Serial.println("hour++");
+  rtc.adjust(rtc.now() + TimeSpan(3600));
+  synchronizeClock();
+}
+
+void minutesClick() {
+  Serial.println("minute++");
+  rtc.adjust(rtc.now() + TimeSpan(60));
+  synchronizeClock();
+}
+
+void secondsClick() {
+  Serial.println("seconds = 0");
   DateTime now = rtc.now();
-
-  if (hourBtn.IsPressed()) {
-    Serial.println("hour++");
-    rtc.adjust(now + TimeSpan(3600));
-    synchronizeClock();
-  }
-
-  if (minuteBtn.IsPressed()) {
-    Serial.println("minute++");
-    rtc.adjust(now + TimeSpan(60));
-    synchronizeClock();
-  }
-
-  if (secondBtn.IsPressed()) {
-    Serial.println("seconds = 0");
-    rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
-                        now.minute(), 0));
-    synchronizeClock();
-  }
+  rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
+                      now.minute(), 0));
+  synchronizeClock();
 }
 
 void synchronizeClock() {
@@ -135,24 +139,31 @@ void updateDAC() {
   }
 
   DateTime now = rtc.now();
+  int h = now.hour() % 12;
+  int m = now.minute();
+  float s = floatSeconds();
+  float h_seconds = h * 3600 + m * 60 + s;
+  float m_seconds = m * 60 + s;
 
   // Output voltages on the three pins in mV.
   uint16_t hv = 0, mv = 0, sv = 0;
 
-  // Max output while button is held, to adjust dial range.
-  if (secondBtn.IsPressed()) {
+  // Override output if the buttons are long-pressed,
+  if (hoursBtn.isLongPressed()) {
+    hv = 0;
+    mv = 0;
+    sv = 0;
+  } else if (minutesBtn.isLongPressed()) {
+    hv = HOURS_MAX_MV / 2;
+    mv = MINUTES_MAX_MV / 2;
+    sv = SECONDS_MAX_MV / 2;
+  } else if (secondsBtn.isLongPressed()) {
     hv = HOURS_MAX_MV;
     mv = MINUTES_MAX_MV;
     sv = SECONDS_MAX_MV;
   } else {
-    int h = now.hour() % 12;
-    int m = now.minute();
-    float s = floatSeconds();
-
     // Calculate voltages for hour, minute, and second hands.
-    float h_seconds = h * 3600 + m * 60 + s;
     hv = (uint16_t)((h_seconds / (12 * 3600)) * HOURS_MAX_MV);
-    float m_seconds = m * 60 + s;
     mv = (uint16_t)((m_seconds / 3600) * MINUTES_MAX_MV);
     sv = (uint16_t)((s / 60) * SECONDS_MAX_MV);
   }
