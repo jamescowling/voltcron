@@ -24,9 +24,6 @@
 //    Gnd: common ground
 //    Rst: unused
 
-// TODO: seconds reset isn't working presumably because of floatmillis
-// same as range hold not working
-
 // TODO: manually adjust zero on dials, seems slightly off and the knob isn't
 // working
 
@@ -59,17 +56,13 @@ RTC_DS3231 rtc;
 const unsigned long SYNC_INTERVAL = 60000;
 const unsigned long LOG_INTERVAL = 100;
 
-// Output voltages on the three pins in mV.
-uint16_t hv = 0, mv = 0, sv = 0;
-
 // Time sync between RTC and microcontroller.
 unsigned long lastSyncMillis = 0, lastRTCSeconds = 0, lastLogMillis = 0;
 
 void adjustTime();
 void synchronizeClock();
 float floatSeconds();
-void updateDAC(const DateTime& now);
-void logTime(const DateTime& now);
+void updateDAC();
 
 void setup() {
   Serial.begin(57600);
@@ -96,26 +89,9 @@ void setup() {
   synchronizeClock();
 }
 
-void synchronizeClock() {
-  Serial.println("Synchronizing clock");
-  lastRTCSeconds = rtc.now().unixtime();
-  lastSyncMillis = millis();
-}
-
 void loop() {
   adjustTime();
-
-  if (millis() - lastSyncMillis >= SYNC_INTERVAL) {
-    synchronizeClock();
-  }
-
-  DateTime now = rtc.now();
-  updateDAC(now);
-
-  if (millis() - lastLogMillis >= LOG_INTERVAL) {
-    lastLogMillis = millis();
-    logTime(now);
-  }
+  updateDAC();
 }
 
 void adjustTime() {
@@ -124,18 +100,27 @@ void adjustTime() {
   if (hourBtn.IsPressed()) {
     Serial.println("hour++");
     rtc.adjust(now + TimeSpan(3600));
+    synchronizeClock();
   }
 
   if (minuteBtn.IsPressed()) {
     Serial.println("minute++");
     rtc.adjust(now + TimeSpan(60));
+    synchronizeClock();
   }
 
   if (secondBtn.IsPressed()) {
     Serial.println("seconds = 0");
     rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
                         now.minute(), 0));
+    synchronizeClock();
   }
+}
+
+void synchronizeClock() {
+  Serial.println("Synchronizing clock");
+  lastRTCSeconds = rtc.now().unixtime();
+  lastSyncMillis = millis();
 }
 
 float floatSeconds() {
@@ -144,7 +129,16 @@ float floatSeconds() {
   return (currentSeconds % 60) + (elapsedMillis % 1000) / 1000.0;
 }
 
-void updateDAC(const DateTime& now) {
+void updateDAC() {
+  if (millis() - lastSyncMillis >= SYNC_INTERVAL) {
+    synchronizeClock();
+  }
+
+  DateTime now = rtc.now();
+
+  // Output voltages on the three pins in mV.
+  uint16_t hv = 0, mv = 0, sv = 0;
+
   // Max output while button is held, to adjust dial range.
   if (secondBtn.IsPressed()) {
     hv = HOURS_MAX_MV;
@@ -166,10 +160,11 @@ void updateDAC(const DateTime& now) {
   dac.setChannelValue(HOURS_CHANNEL, hv, DAC_VREF, DAC_GAIN);
   dac.setChannelValue(MINUTES_CHANNEL, mv, DAC_VREF, DAC_GAIN);
   dac.setChannelValue(SECONDS_CHANNEL, sv, DAC_VREF, DAC_GAIN);
-}
 
-void logTime(const DateTime& now) {
-  Serial.printf("%02d:%02d:%05.2f \tH: %.2fV \tM: %.2fV \tS: %.2fV\n",
-                now.hour() % 12, now.minute(), floatSeconds(), hv / 1000.0,
-                mv / 1000.0, sv / 1000.0);
+  if (millis() - lastLogMillis >= LOG_INTERVAL) {
+    lastLogMillis = millis();
+    Serial.printf("%02d:%02d:%05.2f \tH: %.2fV \tM: %.2fV \tS: %.2fV\n",
+                  now.hour() % 12, now.minute(), floatSeconds(), hv / 1000.0,
+                  mv / 1000.0, sv / 1000.0);
+  }
 }
