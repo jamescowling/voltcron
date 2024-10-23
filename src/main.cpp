@@ -34,6 +34,9 @@ Adafruit_MCP4728 dac;
 Button hourBtn(HOUR_BTN_PIN), minuteBtn(MINUTE_BTN_PIN),
     secondBtn(SECOND_BTN_PIN);
 
+// Output voltages on the three pins in mV.
+uint16_t hv = 0, mv = 0, sv = 0;
+
 // Time sync between RTC and microcontroller.
 unsigned long lastSyncMillis = 0, lastRTCSeconds = 0, lastLogMillis = 0;
 
@@ -45,7 +48,6 @@ void synchronizeClocks();
 float floatSeconds();
 void updateDAC(const DateTime& now);
 void logTime(const DateTime& now);
-void animate();
 
 void setup() {
   Serial.begin(57600);
@@ -66,7 +68,11 @@ void setup() {
   }
 
   synchronizeClocks();
-  animate();
+}
+
+void synchronizeClocks() {
+  lastRTCSeconds = rtc.now().unixtime();
+  lastSyncMillis = millis();
 }
 
 void loop() {
@@ -88,38 +94,20 @@ void loop() {
 void adjustTime() {
   DateTime now = rtc.now();
 
-  // Increment hour if the hour button is pressed.
   if (hourBtn.IsPressed()) {
-    rtc.adjust(now + TimeSpan(3600));  // Add one hour
+    Serial.println("hour++");
+    rtc.adjust(now + TimeSpan(3600));
   }
 
-  // Increment minute if the minute button is pressed.
   if (minuteBtn.IsPressed()) {
-    rtc.adjust(now + TimeSpan(60));  // Add one minute
+    Serial.println("minute++");
+    rtc.adjust(now + TimeSpan(60));
   }
 
-  // Reset seconds to zero if the second button is pressed.
   if (secondBtn.IsPressed()) {
+    Serial.println("seconds = 0");
     rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
                         now.minute(), 0));
-  }
-}
-
-void synchronizeClocks() {
-  lastRTCSeconds = rtc.now().unixtime();
-  lastSyncMillis = millis();
-}
-
-void animate() {
-  // Animate DAC channels to max and min values for adjustment.
-  for (int channel = 0; channel < 3; ++channel) {
-    dac.setChannelValue((MCP4728_channel_t)channel, VOLTMETER_MAX, DAC_VREF,
-                        DAC_GAIN);
-    delay(1000);
-  }
-  for (int channel = 0; channel < 3; ++channel) {
-    dac.setChannelValue((MCP4728_channel_t)channel, 0, DAC_VREF, DAC_GAIN);
-    delay(1000);
   }
 }
 
@@ -130,8 +118,6 @@ float floatSeconds() {
 }
 
 void updateDAC(const DateTime& now) {
-  uint16_t hv, mv, sv;
-
   // Max output while button is held, to adjust dial range.
   if (secondBtn.IsPressed()) {
     hv = mv = sv = VOLTMETER_MAX;
@@ -154,6 +140,7 @@ void updateDAC(const DateTime& now) {
 }
 
 void logTime(const DateTime& now) {
-  Serial.printf("%02d:%02d:%05.2f\n", now.hour() % 12, now.minute(),
-                floatSeconds());
+  Serial.printf("%02d:%02d:%05.2f \tH: %.2fV \tM: %.2fV \tS: %.2fV\n",
+                now.hour() % 12, now.minute(), floatSeconds(), hv / 1000.0,
+                mv / 1000.0, sv / 1000.0);
 }
