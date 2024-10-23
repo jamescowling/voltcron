@@ -24,15 +24,40 @@
 //    Gnd: common ground
 //    Rst: unused
 
-const uint16_t VOLTMETER_MAX = 3000;  // Max voltage for the voltmeter (mV)
-const uint16_t HOUR_BTN_PIN = 1, MINUTE_BTN_PIN = 3, SECOND_BTN_PIN = 4;
-const unsigned long SYNC_INTERVAL = 60000;
-const unsigned long LOG_INTERVAL = 100;
+// TODO: seconds reset isn't working presumably because of floatmillis
+// same as range hold not working
+
+// TODO: manually adjust zero on dials, seems slightly off and the knob isn't
+// working
+
+// Adjustment buttons.
+const uint16_t HOURS_BTN_PIN = 1;
+const uint16_t MINUTES_BTN_PIN = 3;
+const uint16_t SECONDS_BTN_PIN = 4;
+Button hourBtn(HOURS_BTN_PIN);
+Button minuteBtn(MINUTES_BTN_PIN);
+Button secondBtn(SECONDS_BTN_PIN);
+
+Adafruit_MCP4728 dac;
+const MCP4728_vref_t DAC_VREF = MCP4728_VREF_INTERNAL;
+const MCP4728_gain_t DAC_GAIN = MCP4728_GAIN_2X;
+
+// Output channels from DAC.
+const MCP4728_channel_t HOURS_CHANNEL = MCP4728_CHANNEL_C;
+const MCP4728_channel_t MINUTES_CHANNEL = MCP4728_CHANNEL_B;
+const MCP4728_channel_t SECONDS_CHANNEL = MCP4728_CHANNEL_A;
+
+// Max voltage ranges (mV) for the three voltmeter dials. Technically these
+// should all be 3000 since they are 3V voltmeters but this allows some tweaking
+// to fit the range into the printed scale nicely.
+const uint16_t HOURS_MAX_MV = 3000;
+const uint16_t MINUTES_MAX_MV = 3000;
+const uint16_t SECONDS_MAX_MV = 2800;
 
 RTC_DS3231 rtc;
-Adafruit_MCP4728 dac;
-Button hourBtn(HOUR_BTN_PIN), minuteBtn(MINUTE_BTN_PIN),
-    secondBtn(SECOND_BTN_PIN);
+
+const unsigned long SYNC_INTERVAL = 60000;
+const unsigned long LOG_INTERVAL = 100;
 
 // Output voltages on the three pins in mV.
 uint16_t hv = 0, mv = 0, sv = 0;
@@ -40,11 +65,8 @@ uint16_t hv = 0, mv = 0, sv = 0;
 // Time sync between RTC and microcontroller.
 unsigned long lastSyncMillis = 0, lastRTCSeconds = 0, lastLogMillis = 0;
 
-const MCP4728_vref_t DAC_VREF = MCP4728_VREF_INTERNAL;
-const MCP4728_gain_t DAC_GAIN = MCP4728_GAIN_2X;
-
 void adjustTime();
-void synchronizeClocks();
+void synchronizeClock();
 float floatSeconds();
 void updateDAC(const DateTime& now);
 void logTime(const DateTime& now);
@@ -54,8 +76,10 @@ void setup() {
 
   // Initialize RTC.
   if (!rtc.begin()) {
-    Serial.println("Couldn't find DS3231 RTC");
-    while (1);
+    while (true) {
+      Serial.println("Couldn't find RTC");
+      delay(1000);
+    }
   }
   if (rtc.lostPower()) {
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -63,14 +87,17 @@ void setup() {
 
   // Initialize DAC.
   if (!dac.begin()) {
-    Serial.println("Couldn't find MCP4728 DAC");
-    while (1);
+    while (true) {
+      Serial.println("Couldn't find MCP4728 DAC");
+      delay(1000);
+    }
   }
 
-  synchronizeClocks();
+  synchronizeClock();
 }
 
-void synchronizeClocks() {
+void synchronizeClock() {
+  Serial.println("Synchronizing clock");
   lastRTCSeconds = rtc.now().unixtime();
   lastSyncMillis = millis();
 }
@@ -79,7 +106,7 @@ void loop() {
   adjustTime();
 
   if (millis() - lastSyncMillis >= SYNC_INTERVAL) {
-    synchronizeClocks();
+    synchronizeClock();
   }
 
   DateTime now = rtc.now();
@@ -120,7 +147,9 @@ float floatSeconds() {
 void updateDAC(const DateTime& now) {
   // Max output while button is held, to adjust dial range.
   if (secondBtn.IsPressed()) {
-    hv = mv = sv = VOLTMETER_MAX;
+    hv = HOURS_MAX_MV;
+    mv = MINUTES_MAX_MV;
+    sv = SECONDS_MAX_MV;
   } else {
     int h = now.hour() % 12;
     int m = now.minute();
@@ -128,15 +157,15 @@ void updateDAC(const DateTime& now) {
 
     // Calculate voltages for hour, minute, and second hands.
     float h_seconds = h * 3600 + m * 60 + s;
-    hv = (uint16_t)((h_seconds / (12 * 3600)) * VOLTMETER_MAX);
+    hv = (uint16_t)((h_seconds / (12 * 3600)) * HOURS_MAX_MV);
     float m_seconds = m * 60 + s;
-    mv = (uint16_t)((m_seconds / 3600) * VOLTMETER_MAX);
-    sv = (uint16_t)((s / 60) * VOLTMETER_MAX);
+    mv = (uint16_t)((m_seconds / 3600) * MINUTES_MAX_MV);
+    sv = (uint16_t)((s / 60) * SECONDS_MAX_MV);
   }
 
-  dac.setChannelValue(MCP4728_CHANNEL_A, hv, DAC_VREF, DAC_GAIN);
-  dac.setChannelValue(MCP4728_CHANNEL_B, mv, DAC_VREF, DAC_GAIN);
-  dac.setChannelValue(MCP4728_CHANNEL_C, sv, DAC_VREF, DAC_GAIN);
+  dac.setChannelValue(HOURS_CHANNEL, hv, DAC_VREF, DAC_GAIN);
+  dac.setChannelValue(MINUTES_CHANNEL, mv, DAC_VREF, DAC_GAIN);
+  dac.setChannelValue(SECONDS_CHANNEL, sv, DAC_VREF, DAC_GAIN);
 }
 
 void logTime(const DateTime& now) {
