@@ -28,9 +28,9 @@
 // working
 
 // Adjustment buttons.
-const uint16_t HOURS_BTN_PIN = 1;
+const uint16_t HOURS_BTN_PIN = 4;
 const uint16_t MINUTES_BTN_PIN = 3;
-const uint16_t SECONDS_BTN_PIN = 4;
+const uint16_t SECONDS_BTN_PIN = 1;
 OneButton hoursBtn(HOURS_BTN_PIN);
 OneButton minutesBtn(MINUTES_BTN_PIN);
 OneButton secondsBtn(SECONDS_BTN_PIN);
@@ -47,9 +47,9 @@ const MCP4728_channel_t SECONDS_CHANNEL = MCP4728_CHANNEL_A;
 // Max voltage ranges (mV) for the three voltmeter dials. Technically these
 // should all be 3000 since they are 3V voltmeters but this allows some tweaking
 // to fit the range into the printed scale nicely.
-const uint16_t HOURS_MAX_MV = 3000;
-const uint16_t MINUTES_MAX_MV = 3000;
-const uint16_t SECONDS_MAX_MV = 2800;
+const uint16_t HOURS_MAX_MV = 2860;
+const uint16_t MINUTES_MAX_MV = 2860;
+const uint16_t SECONDS_MAX_MV = 2805;
 
 RTC_DS3231 rtc;
 
