@@ -185,8 +185,7 @@ void updateDAC() {
 
   if (millis() - lastLogMillis >= LOG_INTERVAL) {
     lastLogMillis = millis();
-    Serial.printf("%02d:%02d:%05.2f \tH: %.2fV \tM: %.2fV \tS: %.2fV\n",
-                  now.hour() % 12, now.minute(), floatSeconds(), hv / 1000.0,
-                  mv / 1000.0, sv / 1000.0);
+    Serial.printf("%02d:%02d:%05.2f \tH: %.2fV \tM: %.2fV \tS: %.2fV\n", h, m,
+                  s, hv / 1000.0, mv / 1000.0, sv / 1000.0);
   }
 }
