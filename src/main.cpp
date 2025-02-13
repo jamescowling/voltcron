@@ -156,16 +156,14 @@ void updateDAC() {
   DateTime now = rtc.now();
   int h = now.hour() % 12;
   int m = now.minute();
-  float s = floatSeconds();
+  int s = (int)floatSeconds();
 
   // Output voltages on the three pins in mV.
   uint16_t hv = 0, mv = 0, sv = 0;
 
   // Override output if the buttons are long-pressed,
   if (hoursBtn.isLongPressed()) {
-    hv = 0;
-    mv = 0;
-    sv = 0;
+    // Keep them at zero.
   } else if (minutesBtn.isLongPressed()) {
     hv = HOURS_MAX_MV / 2;
     mv = MINUTES_MAX_MV / 2;
@@ -176,10 +174,9 @@ void updateDAC() {
     sv = SECONDS_MAX_MV;
   } else {
     // Calculate voltages for hour, minute, and second hands.
-    // Use integer division to get discrete positions
-    hv = (uint16_t)((h / 12.0) * HOURS_MAX_MV);
-    mv = (uint16_t)((m / 60.0) * MINUTES_MAX_MV);
-    sv = (uint16_t)((int)s / 60.0 * SECONDS_MAX_MV);
+    hv = (h * HOURS_MAX_MV) / 12;
+    mv = (m * MINUTES_MAX_MV) / 60;
+    sv = (s * SECONDS_MAX_MV) / 60;
   }
 
   setDAC(HOURS_CHANNEL, hv);
