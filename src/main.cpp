@@ -24,8 +24,7 @@
 //    Gnd: common ground
 //    Rst: unused
 
-// TODO: manually adjust zero on dials, seems slightly off and the knob isn't
-// working
+// TODO: add triple-click animation
 
 // Adjustment buttons.
 const uint16_t HOURS_BTN_PIN = 4;
@@ -59,9 +58,11 @@ const unsigned long LOG_INTERVAL = 1000;
 // Time sync between RTC and microcontroller.
 unsigned long lastSyncMillis = 0, lastRTCSeconds = 0, lastLogMillis = 0;
 
-void hoursClick();
-void minutesClick();
-void secondsClick();
+void incrHours();
+void incrMinutes();
+void resetSeconds();
+
+void animate();
 
 void synchronizeClock();
 float floatSeconds();
@@ -85,9 +86,10 @@ void setup() {
     delay(5000);
   }
 
-  hoursBtn.attachClick(hoursClick);
-  minutesBtn.attachClick(minutesClick);
-  secondsBtn.attachClick(secondsClick);
+  hoursBtn.attachClick(incrHours);
+  minutesBtn.attachClick(incrMinutes);
+  secondsBtn.attachClick(resetSeconds);
+  secondsBtn.attachDoubleClick(animate);
 
   synchronizeClock();
 }
@@ -101,24 +103,37 @@ void loop() {
   delay(10);
 }
 
-void hoursClick() {
+void incrHours() {
   Serial.println("hour++");
   rtc.adjust(rtc.now() + TimeSpan(3600));
   synchronizeClock();
 }
 
-void minutesClick() {
+void incrMinutes() {
   Serial.println("minute++");
   rtc.adjust(rtc.now() + TimeSpan(60));
   synchronizeClock();
 }
 
-void secondsClick() {
+void resetSeconds() {
   Serial.println("seconds = 0");
   DateTime now = rtc.now();
   rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
                       now.minute(), 0));
   synchronizeClock();
+}
+
+void setDAC(MCP4728_channel_t channel, uint16_t mv) {
+  dac.setChannelValue(channel, mv, DAC_VREF, DAC_GAIN);
+}
+
+void animate() {
+  for (int step = 0; step < 48; step++) {
+    setDAC(HOURS_CHANNEL, step % 8 < 4 ? HOURS_MAX_MV : 0);
+    setDAC(MINUTES_CHANNEL, step % 4 < 2 ? MINUTES_MAX_MV : 0);
+    setDAC(SECONDS_CHANNEL, step % 2 == 0 ? SECONDS_MAX_MV : 0);
+    delay(250);
+  }
 }
 
 void synchronizeClock() {
@@ -142,8 +157,6 @@ void updateDAC() {
   int h = now.hour() % 12;
   int m = now.minute();
   float s = floatSeconds();
-  float h_seconds = h * 3600 + m * 60 + s;
-  float m_seconds = m * 60 + s;
 
   // Output voltages on the three pins in mV.
   uint16_t hv = 0, mv = 0, sv = 0;
@@ -163,14 +176,15 @@ void updateDAC() {
     sv = SECONDS_MAX_MV;
   } else {
     // Calculate voltages for hour, minute, and second hands.
-    hv = (uint16_t)((h_seconds / (12 * 3600)) * HOURS_MAX_MV);
-    mv = (uint16_t)((m_seconds / 3600) * MINUTES_MAX_MV);
-    sv = (uint16_t)((s / 60) * SECONDS_MAX_MV);
+    // Use integer division to get discrete positions
+    hv = (uint16_t)((h / 12.0) * HOURS_MAX_MV);
+    mv = (uint16_t)((m / 60.0) * MINUTES_MAX_MV);
+    sv = (uint16_t)((int)s / 60.0 * SECONDS_MAX_MV);
   }
 
-  dac.setChannelValue(HOURS_CHANNEL, hv, DAC_VREF, DAC_GAIN);
-  dac.setChannelValue(MINUTES_CHANNEL, mv, DAC_VREF, DAC_GAIN);
-  dac.setChannelValue(SECONDS_CHANNEL, sv, DAC_VREF, DAC_GAIN);
+  setDAC(HOURS_CHANNEL, hv);
+  setDAC(MINUTES_CHANNEL, mv);
+  setDAC(SECONDS_CHANNEL, sv);
 
   if (millis() - lastLogMillis >= LOG_INTERVAL) {
     lastLogMillis = millis();
