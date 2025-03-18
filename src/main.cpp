@@ -24,8 +24,6 @@
 //    Gnd: common ground
 //    Rst: unused
 
-// TODO: add triple-click animation
-
 // Adjustment buttons.
 const uint16_t HOURS_BTN_PIN = 4;
 const uint16_t MINUTES_BTN_PIN = 3;
@@ -62,8 +60,6 @@ void incrHours();
 void incrMinutes();
 void resetSeconds();
 
-void animate();
-
 void synchronizeClock();
 float floatSeconds();
 void updateDAC();
@@ -89,7 +85,6 @@ void setup() {
   hoursBtn.attachClick(incrHours);
   minutesBtn.attachClick(incrMinutes);
   secondsBtn.attachClick(resetSeconds);
-  secondsBtn.attachDoubleClick(animate);
 
   synchronizeClock();
 }
@@ -125,15 +120,6 @@ void resetSeconds() {
 
 void setDAC(MCP4728_channel_t channel, uint16_t mv) {
   dac.setChannelValue(channel, mv, DAC_VREF, DAC_GAIN);
-}
-
-void animate() {
-  for (int step = 0; step < 48; step++) {
-    setDAC(HOURS_CHANNEL, step % 8 < 4 ? HOURS_MAX_MV : 0);
-    setDAC(MINUTES_CHANNEL, step % 4 < 2 ? MINUTES_MAX_MV : 0);
-    setDAC(SECONDS_CHANNEL, step % 2 == 0 ? SECONDS_MAX_MV : 0);
-    delay(250);
-  }
 }
 
 void synchronizeClock() {
@@ -185,7 +171,7 @@ void updateDAC() {
 
   if (millis() - lastLogMillis >= LOG_INTERVAL) {
     lastLogMillis = millis();
-    Serial.printf("%02d:%02d:%05.2f \tH: %.2fV \tM: %.2fV \tS: %.2fV\n", h, m,
-                  s, hv / 1000.0, mv / 1000.0, sv / 1000.0);
+    Serial.printf("%02d:%02d:%02d \tH: %.2fV \tM: %.2fV \tS: %.2fV\n", h, m, s,
+                  hv / 1000.0, mv / 1000.0, sv / 1000.0);
   }
 }
