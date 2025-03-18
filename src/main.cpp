@@ -14,10 +14,10 @@
 // Pin assignment:
 //
 //  0/SDA: I2C bus
-// 1/Aout: Hour button
+// 1/Aout: Second reset / max range button
 //  2/SCL: I2C bus
 //   3/RX: Minute button
-//   4/TX: Second reset / max range button
+//   4/TX: Hour button
 //    USB: unregulated 5V to LEDs via 47ohm resistor
 //    Bat: unused
 //     3V: regulated 3.3V to other boards
