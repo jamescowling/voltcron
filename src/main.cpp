@@ -160,8 +160,11 @@ void updateDAC() {
     sv = SECONDS_MAX_MV;
   } else {
     // Calculate voltages for hour, minute, and second hands.
+    // Smoothing the minute transition seems to avoid the dial getting stuck.
+    // We keep the hours hand at discrete jumps since it makes it easier to read
+    // and it doesn't seem to get stuck.
     hv = (h * HOURS_MAX_MV) / 12;
-    mv = (m * MINUTES_MAX_MV) / 60;
+    mv = ((m + (s / 60.0)) * MINUTES_MAX_MV) / 60;
     sv = (s * SECONDS_MAX_MV) / 60;
   }
 
